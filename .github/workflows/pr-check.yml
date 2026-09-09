@@ -43,7 +43,7 @@ jobs:
       - if: steps.changed.outputs.affected == 'true'
         uses: docker/setup-buildx-action@v3
       - if: steps.changed.outputs.affected == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
