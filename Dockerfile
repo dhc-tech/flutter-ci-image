@@ -14,7 +14,7 @@
 # not something this image chooses to omit.
 #
 # FLUTTER_REF: a git tag (e.g. 3.47.2) or branch name (stable/beta/main).
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=en_US.UTF-8 \
