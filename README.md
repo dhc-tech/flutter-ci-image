@@ -120,16 +120,41 @@ Already configured on this repo — noted here in case it's ever recreated:
 
 ## Usage
 
-```yaml
-image: ghcr.io/dhc-tech/flutter-ci:3.47.2
-```
+Pick a tag based on what you actually want — same 4 options as the table
+above, spelled out as copy-pasteable `image:` lines:
 
-or track a channel (rebuilds within ~5 min of `stable`/`beta` moving,
-~daily for `main` — see above):
-
+**Most people, most of the time — track official Flutter stable:**
 ```yaml
 image: ghcr.io/dhc-tech/flutter-ci:stable
 ```
+Always builds against whatever Flutter itself currently calls its stable
+release. Moves forward automatically (~quarterly, within ~5 min of it
+actually changing) — you never touch this line again.
+
+**Reproducible builds — freeze one exact Flutter version forever:**
+```yaml
+image: ghcr.io/dhc-tech/flutter-ci:3.47.2
+```
+Never changes. Use this if you need every build to use the *exact* same
+Flutter SDK build over build, and are fine manually bumping the tag
+yourself when you deliberately want to move to a newer Flutter version.
+`pinned` (no version number) always points at the same commit as the
+latest `<version>` tag, if you'd rather not track the number at all.
+
+**Want to try Flutter's upcoming release before it reaches stable:**
+```yaml
+image: ghcr.io/dhc-tech/flutter-ci:beta
+```
+This is what `stable` becomes next (~monthly cadence) — heavily tested by
+the Flutter team already, just not yet promoted. Rebuilds daily.
+
+**Testing against Flutter's own bleeding-edge, unreleased source:**
+```yaml
+image: ghcr.io/dhc-tech/flutter-ci:main
+```
+Flutter's own contributor branch. Flutter's docs explicitly say not to
+use this for anything but testing against upstream changes as they land
+— expect regressions. Rebuilds daily.
 
 ### Checking exactly what Flutter version a tag contains
 
