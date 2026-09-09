@@ -41,7 +41,7 @@ jobs:
         id: pinned
         run: echo "version=$(cat FLUTTER_VERSION)" >> "$GITHUB_OUTPUT"
       - if: steps.changed.outputs.affected == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.changed.outputs.affected == 'true'
         uses: docker/build-push-action@v7
         with:
