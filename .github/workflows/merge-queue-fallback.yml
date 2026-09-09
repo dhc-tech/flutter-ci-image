@@ -9,6 +9,16 @@ name: Merge queue fallback for bot PRs
 # repo: periodically find open, auto-merge-enabled bot PRs that have
 # fallen behind main and update their branch, so they don't sit stuck
 # waiting for a manual "Update branch" click.
+#
+# Needs GH_PAT_WORKFLOW (repo secret: a personal access token with the
+# `workflow` OAuth scope) — Dependabot's github-actions PRs modify files
+# under .github/workflows/ themselves, and the default GITHUB_TOKEN can
+# never update a PR branch that touches workflow files, full stop; no
+# `permissions:` entry changes this (confirmed via a real failed run:
+# "refusing to allow a GitHub App to ... update workflow ... without
+# `workflows` permission"). A real user-owned PAT is the only way around
+# it. Falls back to GITHUB_TOKEN if the secret isn't set (works for
+# non-workflow-file PRs, e.g. the Flutter version bump bot's own PRs).
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -32,7 +42,7 @@ jobs:
       # shows as a real error in the Actions tab), while still trying
       # every other PR rather than one failure blocking the rest.
       - env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT_WORKFLOW || secrets.GITHUB_TOKEN }}
         run: |
           set -e
           prs="$(gh pr list --repo ${{ github.repository }} --state open --json number,author,labels,mergeStateStatus,url)"
