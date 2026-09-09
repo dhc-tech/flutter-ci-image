@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Keeps actions/checkout, docker/build-push-action, etc. current in every
+  # workflow file — this is exactly Dependabot's own job; no need to
+  # reinvent it the way check-flutter-version.yml does for Flutter itself
+  # (which isn't a Dependabot-supported ecosystem).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependabot"
+    commit-message:
+      prefix: "chore"
+
+  # Tracks the Dockerfile's FROM ubuntu:24.04 base image for updates.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependabot"
+    commit-message:
+      prefix: "chore"
