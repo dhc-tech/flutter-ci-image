@@ -2,8 +2,13 @@ name: Check for new Flutter stable release
 
 on:
   schedule:
-    # Daily, off the hour to avoid the top-of-hour GitHub Actions crunch.
-    - cron: "17 4 * * *"
+    # Every 15 minutes — a new stable release is really just flutter/
+    # flutter's `stable` branch moving to a new tagged commit, so this
+    # polls often and only acts when that actually happened (idempotent
+    # branch-exists check below), which is as close to "the moment
+    # Flutter tags a release" as a repo we don't own can get without a
+    # webhook.
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -16,19 +21,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get latest official stable version
+      - name: Get latest stable version directly from github.com/flutter/flutter
         id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Flutter's own official release manifest — the same source
-          # `flutter upgrade` itself consults.
-          latest="$(curl -sf https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json \
-            | jq -r '.releases[] | select(.channel == "stable") | .version' \
-            | sort -V | tail -1)"
-          if [ -z "$latest" ]; then
-            echo "Could not determine the latest stable Flutter version." >&2
+          set -e
+          # The `stable` channel *is* a branch in flutter/flutter — its
+          # HEAD commit is whatever Flutter's release process most
+          # recently promoted to stable. Match that commit against the
+          # repo's own tags to get the real version number, straight from
+          # the source (https://github.com/flutter/flutter), never a
+          # hardcoded value or a third-party manifest.
+          sha="$(gh api repos/flutter/flutter/commits/stable --jq '.sha')"
+          version="$(gh api repos/flutter/flutter/tags --paginate --jq ".[] | select(.commit.sha == \"$sha\") | .name" | head -1)"
+          if [ -z "$version" ]; then
+            echo "No tag found on flutter/flutter's stable branch HEAD ($sha) — flutter/flutter's tagging convention may have changed." >&2
             exit 1
           fi
-          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Compare against pinned version
         id: compare
@@ -63,7 +74,7 @@ jobs:
           git push origin "$branch"
           gh pr create \
             --title "chore: bump pinned Flutter ${OLD_VERSION} → ${NEW_VERSION}" \
-            --body "Automated: Flutter's official stable channel released **${NEW_VERSION}** (was ${OLD_VERSION}). Merging this rebuilds and pushes the \`pinned\`/\`${NEW_VERSION}\` image tags automatically — see build-and-push.yml. Auto-merges once CI passes (see auto-merge.yml)." \
+            --body "Automated: flutter/flutter's \`stable\` branch now points at **${NEW_VERSION}** (was ${OLD_VERSION}), detected directly from github.com/flutter/flutter — no hardcoded/external version source. Merging this rebuilds and pushes the \`pinned\`/\`${NEW_VERSION}\` image tags automatically — see build-and-push.yml. Auto-merges once CI passes (see auto-merge.yml)." \
             --label "automated-flutter-bump" \
             --base main \
             --head "$branch"
