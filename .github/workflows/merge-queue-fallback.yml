@@ -22,11 +22,21 @@ jobs:
   update-stuck-branches:
     runs-on: ubuntu-latest
     steps:
+      # This step only ever updates a PR's branch — it never merges
+      # anything itself. The actual merge is entirely GitHub's own native
+      # auto-merge, gated on pr-check.yml's build-check passing on the
+      # now-current branch; a failed/unclear update-branch call here just
+      # means that PR stays exactly where it was (open, unmerged, still
+      # BEHIND) until the next sweep — never a reason to merge, and never
+      # silently hidden: any failure is logged and fails this job (so it
+      # shows as a real error in the Actions tab), while still trying
+      # every other PR rather than one failure blocking the rest.
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          prs="$(gh pr list --state open --json number,author,labels,mergeStateStatus,url)"
+          prs="$(gh pr list --repo ${{ github.repository }} --state open --json number,author,labels,mergeStateStatus,url)"
+          failures=0
           echo "$prs" | jq -c '.[]' | while read -r pr; do
             number="$(echo "$pr" | jq -r '.number')"
             author="$(echo "$pr" | jq -r '.author.login')"
@@ -44,6 +54,13 @@ jobs:
 
             if [ "$status" = "BEHIND" ]; then
               echo "PR #$number ($author) is behind main — updating branch."
-              gh api -X PUT "repos/${{ github.repository }}/pulls/$number/update-branch" || true
+              if ! gh api -X PUT "repos/${{ github.repository }}/pulls/$number/update-branch"; then
+                echo "::error::Failed to update branch for PR #$number — it stays open/unmerged, not retried until the next scheduled sweep."
+                echo "$number" >> /tmp/failed_prs
+              fi
             fi
           done
+          if [ -s /tmp/failed_prs ]; then
+            echo "::error::update-branch failed for: $(paste -sd, /tmp/failed_prs)"
+            exit 1
+          fi
