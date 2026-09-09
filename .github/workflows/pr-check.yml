@@ -1,0 +1,30 @@
+name: PR build check
+
+# Validates a version-bump PR actually builds before it's allowed to
+# auto-merge — see auto-merge.yml. Build-only, no push (PRs don't get
+# package write access).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - FLUTTER_VERSION
+
+permissions:
+  contents: read
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned Flutter version
+        id: pinned
+        run: echo "version=$(cat FLUTTER_VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: |
+            FLUTTER_REF=${{ steps.pinned.outputs.version }}

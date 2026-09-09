@@ -1,0 +1,69 @@
+name: Check for new Flutter stable release
+
+on:
+  schedule:
+    # Daily, off the hour to avoid the top-of-hour GitHub Actions crunch.
+    - cron: "17 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest official stable version
+        id: latest
+        run: |
+          # Flutter's own official release manifest — the same source
+          # `flutter upgrade` itself consults.
+          latest="$(curl -sf https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json \
+            | jq -r '.releases[] | select(.channel == "stable") | .version' \
+            | sort -V | tail -1)"
+          if [ -z "$latest" ]; then
+            echo "Could not determine the latest stable Flutter version." >&2
+            exit 1
+          fi
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Compare against pinned version
+        id: compare
+        run: |
+          current="$(cat FLUTTER_VERSION)"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "${{ steps.latest.outputs.version }}" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open version-bump PR
+        if: steps.compare.outputs.up_to_date == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.latest.outputs.version }}
+          OLD_VERSION: ${{ steps.compare.outputs.current }}
+        run: |
+          branch="flutter-bump/${NEW_VERSION}"
+          # Idempotent: if this bump's branch/PR already exists (e.g. a
+          # previous run today), don't open a duplicate.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists — skipping."
+            exit 0
+          fi
+          git config user.name "flutter-version-bot"
+          git config user.email "actions@github.com"
+          git checkout -b "$branch"
+          echo "$NEW_VERSION" > FLUTTER_VERSION
+          git commit -am "chore: bump pinned Flutter to ${NEW_VERSION}"
+          git push origin "$branch"
+          gh pr create \
+            --title "chore: bump pinned Flutter ${OLD_VERSION} → ${NEW_VERSION}" \
+            --body "Automated: Flutter's official stable channel released **${NEW_VERSION}** (was ${OLD_VERSION}). Merging this rebuilds and pushes the \`pinned\`/\`${NEW_VERSION}\` image tags automatically — see build-and-push.yml. Auto-merges once CI passes (see auto-merge.yml)." \
+            --label "automated-flutter-bump" \
+            --base main \
+            --head "$branch"

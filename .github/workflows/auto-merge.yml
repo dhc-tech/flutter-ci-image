@@ -1,0 +1,23 @@
+name: Auto-merge Flutter version bump PRs
+
+# Restricted to PRs the bump bot itself opened (check-flutter-version.yml)
+# — never auto-merges a human-authored PR, even if it happens to touch
+# FLUTTER_VERSION. Actual merge only happens once pr-check.yml's build
+# passes; GitHub's native auto-merge handles that wait.
+on:
+  pull_request:
+    types: [opened, labeled, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    if: contains(github.event.pull_request.labels.*.name, 'automated-flutter-bump')
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
