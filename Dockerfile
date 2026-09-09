@@ -24,20 +24,41 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         openjdk-21-jdk-headless \
-        curl ca-certificates unzip xz-utils git \
+        curl ca-certificates unzip xz-utils git gnupg \
         locales \
-        # Web: headless Chromium for `flutter test --platform chrome` /
-        # `flutter drive -d web-server` — https://docs.flutter.dev/testing/integration-tests.
-        chromium \
         # Linux desktop: https://docs.flutter.dev/platform-integration/linux/building
         clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
+# Web: real Chrome for `flutter test --platform chrome` /
+# `flutter drive -d web-server` — https://docs.flutter.dev/testing/integration-tests.
+#
+# Deliberately NOT `apt-get install chromium` — on Ubuntu 19.10+ (this
+# image included) that package is a transitional wrapper that shells out
+# to snap at runtime, and snap does not work inside a Docker container:
+# the apt install itself succeeds (so this would silently pass a Docker
+# build), but the resulting `chromium` binary fails the moment anything
+# actually launches it. Installing Google's own .deb repo instead gives a
+# real, self-contained binary — no snap involved. See e.g.
+# https://www.stablebuild.com/blog/install-chromium-in-an-ubuntu-docker-container.
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+        | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+        > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/* \
+    # Build-time smoke test — proves the binary genuinely runs (not just
+    # that `apt install` exited 0), so a regression like the snap-wrapper
+    # issue above fails the Docker build immediately instead of surfacing
+    # only when a consuming project's own `flutter test --platform
+    # chrome` run breaks.
+    && google-chrome-stable --headless --disable-gpu --no-sandbox --version
+
 # https://docs.flutter.dev/testing/integration-tests — Flutter looks for
-# this exact env var to drive headless Chrome; the apt package installs
-# the binary as `chromium`, not `google-chrome`.
-ENV CHROME_EXECUTABLE=/usr/bin/chromium
+# this exact env var to drive headless Chrome.
+ENV CHROME_EXECUTABLE=/usr/bin/google-chrome-stable
 
 # https://developer.android.com/studio#command-line-tools-only — pinned to
 # an exact build (15859902) rather than a "latest" URL, so this image is
