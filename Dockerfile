@@ -37,18 +37,17 @@ RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
     && mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest" \
     && rm /tmp/cmdline-tools.zip
 
-# Matches this project's compileSdk 37 (android/app/build.gradle.kts).
-# Build-tools patch version follows Android's own X.0.0-per-platform
-# convention; if a given release doesn't exist under this exact version,
-# pr-check.yml's real build catches it — never silently falls back.
-ENV ANDROID_PLATFORM_VERSION=37
-ENV ANDROID_BUILD_TOOLS_VERSION=37.0.0
-
+# No hardcoded platforms;android-<N> or build-tools;<N> here on purpose —
+# guessing a specific version number is exactly what broke earlier (37
+# doesn't exist as a real published platform). Instead: accept every SDK
+# license up front, and let the Android Gradle Plugin's own official
+# auto-download mechanism install whatever exact compileSdk/build-tools
+# version a given consuming project's build.gradle.kts actually asks for,
+# the first time it's built — https://developer.android.com/studio/intro/update#download-with-gradle.
+# This image works unmodified for any project's SDK level, current or
+# future, without ever needing a version bump here.
 RUN yes | sdkmanager --licenses \
-    && sdkmanager \
-        "platform-tools" \
-        "platforms;android-${ANDROID_PLATFORM_VERSION}" \
-        "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+    && sdkmanager "platform-tools"
 
 ARG FLUTTER_REF=stable
 ENV FLUTTER_HOME=/opt/flutter
@@ -58,6 +57,13 @@ RUN git clone --depth 1 --branch "${FLUTTER_REF}" https://github.com/flutter/flu
     && yes | flutter doctor --android-licenses \
     && flutter doctor \
     && flutter precache --android
+
+# Extension point for web builds (not installed yet — Android-only image
+# for now, per current scope): `flutter precache --web` needs no extra apt
+# packages, but `flutter test --platform chrome` would need a `chromium`
+# apt package installed above alongside the other apt-get install line.
+# Add both here together when web support is actually needed, rather than
+# growing this file piecemeal.
 
 # Bake in the exact ref this image was built for, so a build using it can
 # assert against it the same way bitbucket-pipelines.yml's own version
