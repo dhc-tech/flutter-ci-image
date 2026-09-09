@@ -20,7 +20,8 @@ on:
     - cron: "*/15 * * * *"
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
   packages: write
 
 jobs:
@@ -57,8 +58,13 @@ jobs:
         channel: [stable, beta, main]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      # Last-built SHA is tracked as a GitHub Actions *repository
+      # variable*, not a git-committed file — a committed file would need
+      # `git push origin main` on every build, which branch protection's
+      # required "build-check" status blocks for a non-admin token (this
+      # workflow's own GITHUB_TOKEN included), so every single tracking
+      # commit silently failed until this fix. Variables need no push at
+      # all.
       - name: Check flutter/flutter's ${{ matrix.channel }} branch for new commits
         id: check
         env:
@@ -66,10 +72,10 @@ jobs:
         run: |
           set -e
           latest_sha="$(gh api repos/flutter/flutter/commits/${{ matrix.channel }} --jq '.sha')"
-          sha_file="channel-shas/${{ matrix.channel }}.sha"
-          mkdir -p channel-shas
-          last_built_sha="$(cat "$sha_file" 2>/dev/null || echo none)"
+          var_name="LAST_BUILT_SHA_$(echo "${{ matrix.channel }}" | tr '[:lower:]' '[:upper:]')"
+          last_built_sha="$(gh variable get "$var_name" --repo ${{ github.repository }} 2>/dev/null || echo none)"
           echo "latest_sha=$latest_sha" >> "$GITHUB_OUTPUT"
+          echo "var_name=$var_name" >> "$GITHUB_OUTPUT"
           if [ "$latest_sha" = "$last_built_sha" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "flutter/flutter@${{ matrix.channel }} unchanged since last build ($latest_sha) — skipping."
@@ -100,13 +106,9 @@ jobs:
       # Record what we actually built so the next poll can compare against
       # it — only on a real rebuild, never on a skipped no-op run.
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p channel-shas
-          echo "${{ steps.check.outputs.latest_sha }}" > "channel-shas/${{ matrix.channel }}.sha"
-          git config user.name "flutter-ci-image-bot"
-          git config user.email "actions@github.com"
-          git add "channel-shas/${{ matrix.channel }}.sha"
-          git diff --staged --quiet || git commit -m "chore: record built SHA for ${{ matrix.channel }}"
-          # Retry-safe: another matrix job's commit may have landed first.
-          git pull --rebase origin main
-          git push origin main
+          gh variable set "${{ steps.check.outputs.var_name }}" \
+            --repo ${{ github.repository }} \
+            --body "${{ steps.check.outputs.latest_sha }}"

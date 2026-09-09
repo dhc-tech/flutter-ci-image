@@ -39,10 +39,12 @@ state, checked automatically and often:
 - **`stable`/`beta`/`main` tags** — `build-and-push.yml` runs every 15
   minutes. Each run asks the GitHub API for the current HEAD commit SHA of
   that channel's branch in `flutter/flutter`, compares it against the SHA
-  this image last actually built (recorded in `channel-shas/<channel>.sha`
-  in this repo), and only rebuilds — and only updates that recorded SHA —
-  if the branch has genuinely moved. An unchanged channel is a fast no-op,
-  not a wasted rebuild.
+  this image last actually built (a `LAST_BUILT_SHA_<CHANNEL>` GitHub
+  Actions repository variable — not a committed file, since branch
+  protection blocks a plain `git push` to `main` even from the workflow's
+  own token; variables need no push), and only rebuilds — and only
+  updates that recorded SHA — if the branch has genuinely moved. An
+  unchanged channel is a fast no-op, not a wasted rebuild.
 - **`<version>`/`pinned` tag** — `check-flutter-version.yml` also runs
   every 15 minutes. It asks the GitHub API which commit `flutter/flutter`'s
   `stable` branch currently points at, then which tag (if any) points at
@@ -54,17 +56,55 @@ state, checked automatically and often:
 
 ## Fully automated release flow
 
-1. `check-flutter-version.yml` detects flutter/flutter tagged a new stable
-   release and opens a PR (labeled `automated-flutter-bump`) bumping
-   `FLUTTER_VERSION`.
-2. `pr-check.yml` builds the Dockerfile against the new version (no push)
-   to confirm it actually builds before anything merges.
-3. `auto-merge.yml` — restricted to PRs carrying that exact label, i.e.
-   only ones the bot itself opened, never a human PR — enables GitHub's
-   native auto-merge, which completes the merge the moment `pr-check.yml`
-   passes. No manual click required end to end.
-4. Merging to `main` triggers `build-and-push.yml`'s `build-pinned` job,
-   which builds and publishes the new `<version>`/`pinned` tags.
+Two trusted bots can open a PR here — neither a human PR is ever
+auto-merged, even if it happens to touch the same files:
+
+- **`check-flutter-version.yml`** — detects flutter/flutter tagged a new
+  stable release and opens a PR (labeled `automated-flutter-bump`)
+  bumping `FLUTTER_VERSION`.
+- **Dependabot** (`.github/dependabot.yml`) — opens its own PRs bumping
+  GitHub Actions versions used in the workflows, and the `ubuntu:24.04`
+  base image in the Dockerfile.
+
+For either:
+
+1. `pr-check.yml` builds the Dockerfile against the change (no push) to
+   confirm it actually builds before anything merges — for a
+   workflow-only Dependabot PR that can't affect the image, it skips the
+   actual build and passes immediately instead.
+2. `auto-merge.yml` — checks the PR's live author/label (not the
+   `opened` event's payload, which isn't reliably populated with a label
+   set at PR-creation time) — enables GitHub's native auto-merge, which
+   completes the merge the moment `pr-check.yml` passes. Runs on
+   `pull_request_target` specifically because Dependabot PRs always get a
+   hard-restricted, read-only token on plain `pull_request` regardless of
+   repository settings. No manual click required end to end.
+3. Merging a `FLUTTER_VERSION` bump to `main` triggers
+   `build-and-push.yml`'s `build-pinned` job, publishing the new
+   `<version>`/`pinned` tags.
+
+This entire chain was verified with a real test run, not just designed on
+paper: a manually-lowered `FLUTTER_VERSION` was detected, a real PR was
+opened, built, and auto-merged with zero manual steps once the one-time
+repo settings below were in place.
+
+### One-time repo setup this flow depends on
+
+Already configured on this repo — noted here in case it's ever recreated:
+
+- **Settings → Actions → General → Workflow permissions**: "Read and
+  write permissions" + "Allow GitHub Actions to create and approve pull
+  requests" — without this, `gh pr create` fails with *"GitHub Actions is
+  not permitted to create or approve pull requests."*
+- **Settings → General → Pull Requests → "Allow auto-merge"** — without
+  this, `gh pr merge --auto` has nothing to enable.
+- **Branch protection on `main`**: required status check `build-check`
+  (from `pr-check.yml`), strict (branch must be up to date) — this is
+  also what makes `git push origin main` fail for anything but a proper
+  PR merge, which is why build state is tracked via repository variables
+  instead of a committed file (see above).
+- A label named `automated-flutter-bump` must exist on the repo (`gh
+  label create`) before `check-flutter-version.yml` can apply it.
 
 ## Usage
 
@@ -84,6 +124,10 @@ image: ghcr.io/dhc-tech/flutter-ci:stable
   git ref (a version tag or a channel branch name) to install.
 - `FLUTTER_VERSION` — single source of truth for the `pinned` tag's
   version; only ever changed by `check-flutter-version.yml`'s bot PRs.
-- `channel-shas/*.sha` — last-built commit SHA per channel, used to skip
-  no-op rebuilds; only ever changed by `build-and-push.yml` itself.
+- `LAST_BUILT_SHA_<CHANNEL>` repository variables (Settings → Secrets and
+  variables → Actions → Variables) — last-built commit SHA per channel,
+  used to skip no-op rebuilds; only ever changed by `build-and-push.yml`
+  itself.
+- `.github/dependabot.yml` — keeps Actions versions and the base image
+  current.
 - `.github/workflows/` — the four workflows described above.
