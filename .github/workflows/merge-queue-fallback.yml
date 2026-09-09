@@ -6,9 +6,14 @@ name: Merge queue fallback for bot PRs
 # with a generic validation error when actually attempted via the
 # rulesets API, consistent with that being a plan/ownership restriction
 # rather than a config mistake. This is the equivalent for a personal
-# repo: periodically find open, auto-merge-enabled bot PRs that have
-# fallen behind main and update their branch, so they don't sit stuck
-# waiting for a manual "Update branch" click.
+# repo: periodically find open, trusted bot PRs and (1) enable auto-merge
+# if it isn't already, since auto-merge.yml's pull_request_target trigger
+# has been observed to simply not fire at all for some bot-opened PRs
+# (confirmed on a real PR — zero runs of that workflow ever appeared for
+# it, not even a blocked/action_required one) — this scheduled sweep is
+# the reliable path, not a backup for a rare case; and (2) update the
+# branch if it's fallen BEHIND main, so they don't sit stuck waiting for
+# a manual "Update branch" click.
 #
 # Needs GH_PAT_WORKFLOW (repo secret: a personal access token with the
 # `workflow` OAuth scope) — Dependabot's github-actions PRs modify files
@@ -21,7 +26,9 @@ name: Merge queue fallback for bot PRs
 # non-workflow-file PRs, e.g. the Flutter version bump bot's own PRs).
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # Every 5 minutes — GitHub Actions' own documented minimum schedule
+    # granularity.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -29,29 +36,28 @@ permissions:
   pull-requests: write
 
 jobs:
-  update-stuck-branches:
+  advance-trusted-prs:
     runs-on: ubuntu-latest
     steps:
-      # This step only ever updates a PR's branch — it never merges
-      # anything itself. The actual merge is entirely GitHub's own native
-      # auto-merge, gated on pr-check.yml's build-check passing on the
-      # now-current branch; a failed/unclear update-branch call here just
-      # means that PR stays exactly where it was (open, unmerged, still
-      # BEHIND) until the next sweep — never a reason to merge, and never
-      # silently hidden: any failure is logged and fails this job (so it
-      # shows as a real error in the Actions tab), while still trying
-      # every other PR rather than one failure blocking the rest.
+      # Never merges anything itself — only enables auto-merge (GitHub's
+      # own native feature then completes the merge once pr-check.yml's
+      # build-check passes) and updates a stale branch. A failure here
+      # just means that PR stays exactly where it was until the next
+      # sweep — never silently hidden: any failure is logged and fails
+      # this job, while still trying every other PR rather than one
+      # failure blocking the rest.
       - env:
           GH_TOKEN: ${{ secrets.GH_PAT_WORKFLOW || secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          prs="$(gh pr list --repo ${{ github.repository }} --state open --json number,author,labels,mergeStateStatus,url)"
-          failures=0
+          prs="$(gh pr list --repo ${{ github.repository }} --state open --json number,author,labels,mergeStateStatus,url,autoMergeRequest)"
           echo "$prs" | jq -c '.[]' | while read -r pr; do
             number="$(echo "$pr" | jq -r '.number')"
             author="$(echo "$pr" | jq -r '.author.login')"
+            url="$(echo "$pr" | jq -r '.url')"
             has_bump_label="$(echo "$pr" | jq -r '[.labels[].name] | contains(["automated-flutter-bump"])')"
             status="$(echo "$pr" | jq -r '.mergeStateStatus')"
+            has_auto_merge="$(echo "$pr" | jq -r '.autoMergeRequest != null')"
 
             case "$author" in
               dependabot\[bot\]|app/dependabot) trusted=true ;;
@@ -60,6 +66,14 @@ jobs:
 
             if [ "$trusted" != "true" ]; then
               continue
+            fi
+
+            if [ "$has_auto_merge" != "true" ]; then
+              echo "PR #$number ($author) has no auto-merge enabled yet — enabling."
+              if ! gh pr merge --auto --squash "$url"; then
+                echo "::error::Failed to enable auto-merge for PR #$number."
+                echo "$number" >> /tmp/failed_prs
+              fi
             fi
 
             if [ "$status" = "BEHIND" ]; then
@@ -71,6 +85,6 @@ jobs:
             fi
           done
           if [ -s /tmp/failed_prs ]; then
-            echo "::error::update-branch failed for: $(paste -sd, /tmp/failed_prs)"
+            echo "::error::advance-trusted-prs failed for: $(paste -sd, /tmp/failed_prs)"
             exit 1
           fi

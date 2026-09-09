@@ -10,14 +10,15 @@ on:
       - FLUTTER_VERSION
   workflow_dispatch: {}
   schedule:
-    # Every 15 minutes — NOT a fixed rebuild schedule. Each run checks
-    # whether flutter/flutter's stable/beta/main branches actually moved
-    # since the last build (see build-channels below); if not, it's a
-    # no-op. This is how "rebuild the moment Flutter pushes something new"
-    # is achieved without GitHub Actions supporting real upstream webhooks
-    # for a repo we don't own — polling frequently + skipping unchanged
-    # channels is the closest practical equivalent to immediate.
-    - cron: "*/15 * * * *"
+    # Every 5 minutes — GitHub Actions' own documented minimum schedule
+    # granularity (anything tighter, e.g. */1, is silently coalesced to
+    # 5 min by GitHub itself, not something a workflow can opt out of).
+    # NOT a fixed rebuild schedule — each run checks whether flutter/
+    # flutter's stable/beta/main branches actually moved since the last
+    # build (see build-channels below); if not, it's a no-op. This is the
+    # closest practical equivalent to instant reaction without GitHub
+    # Actions supporting real upstream webhooks for a repo we don't own.
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
@@ -58,6 +59,8 @@ jobs:
         channel: [stable, beta, main]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+
       # Last-built SHA is tracked as a GitHub Actions *repository
       # variable*, not a git-committed file — a committed file would need
       # `git push origin main` on every build, which branch protection's

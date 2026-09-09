@@ -2,13 +2,14 @@ name: Check for new Flutter stable release
 
 on:
   schedule:
-    # Every 15 minutes — a new stable release is really just flutter/
-    # flutter's `stable` branch moving to a new tagged commit, so this
-    # polls often and only acts when that actually happened (idempotent
-    # against an already-open bump PR, below), which is as close to "the
-    # moment Flutter tags a release" as a repo we don't own can get
-    # without a webhook.
-    - cron: "*/15 * * * *"
+    # Every 5 minutes — GitHub Actions' own documented minimum schedule
+    # granularity. A new stable release is really just flutter/flutter's
+    # `stable` branch moving to a new tagged commit, so this polls often
+    # and only acts when that actually happened (idempotent against an
+    # already-open bump PR, below), which is as close to "the moment
+    # Flutter tags a release" as a repo we don't own can get without a
+    # real webhook.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:

@@ -11,7 +11,7 @@ name: Approve bot PR workflow runs
 # PR's run, even if it happens to be sitting in the same state).
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:
