@@ -1,11 +1,23 @@
-name: Auto-merge Flutter version bump PRs
+name: Auto-merge bot PRs
 
-# Restricted to PRs the bump bot itself opened (check-flutter-version.yml)
-# — never auto-merges a human-authored PR, even if it happens to touch
-# FLUTTER_VERSION. Actual merge only happens once pr-check.yml's build
-# passes; GitHub's native auto-merge handles that wait.
+# Restricted to PRs opened by a bot this repo actually trusts:
+# check-flutter-version.yml's own bump bot, or GitHub's native Dependabot
+# (.github/dependabot.yml) — never a human-authored PR, even one that
+# happens to touch the same files. Actual merge only happens once
+# pr-check.yml's build passes; GitHub's native auto-merge handles that
+# wait.
+#
+# pull_request_target, not pull_request: Dependabot-authored PRs always
+# get a hard-restricted, read-only GITHUB_TOKEN on `pull_request` (a
+# GitHub security policy, not something repo settings can override) — the
+# `gh pr merge --auto` step below would silently fail for every Dependabot
+# PR under that trigger. pull_request_target runs with the base branch's
+# real permissions regardless of PR source — GitHub's own documented
+# mechanism for automating Dependabot — and is safe here specifically
+# because this workflow only reads PR metadata and calls `gh pr merge`,
+# never checks out or executes anything from the PR branch itself.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, labeled, reopened]
 
 permissions:
@@ -16,21 +28,32 @@ jobs:
   enable-auto-merge:
     runs-on: ubuntu-latest
     steps:
-      # Fetches the PR's current label list fresh via the API rather than
-      # trusting github.event.pull_request.labels — when a PR is opened
-      # with `gh pr create --label ...` in one call, the `opened` event's
-      # webhook payload isn't reliably populated with that label yet (a
-      # real timing quirk, confirmed by an actual bot-opened PR whose
-      # `opened` event had an empty labels list despite --label having
-      # been passed at creation).
+      # Fetches the PR's current label/author fresh via the API rather
+      # than trusting github.event.pull_request.labels — when a PR is
+      # opened with `gh pr create --label ...` in one call, the `opened`
+      # event's webhook payload isn't reliably populated with that label
+      # yet (a real timing quirk, confirmed by an actual bot-opened PR
+      # whose `opened` event had an empty labels list despite --label
+      # having been passed at creation).
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -e
-          has_label="$(gh pr view "$PR_URL" --json labels --jq '[.labels[].name] | contains(["automated-flutter-bump"])')"
-          if [ "$has_label" != "true" ]; then
-            echo "PR does not carry the automated-flutter-bump label — not auto-merging."
+          info="$(gh pr view "$PR_URL" --json labels,author)"
+          has_bump_label="$(echo "$info" | jq -r '[.labels[].name] | contains(["automated-flutter-bump"])')"
+          author="$(echo "$info" | jq -r '.author.login')"
+          # gh CLI's JSON author.login for a GitHub App actor has been seen
+          # as both "dependabot[bot]" (classic REST-style) and
+          # "app/dependabot" (newer App-node style) depending on version —
+          # match either rather than assume one, since guessing wrong here
+          # means Dependabot PRs silently never auto-merge.
+          case "$author" in
+            dependabot\[bot\]|app/dependabot) is_dependabot=true ;;
+            *) is_dependabot=false ;;
+          esac
+          if [ "$has_bump_label" != "true" ] && [ "$is_dependabot" != "true" ]; then
+            echo "PR is not the Flutter version-bump bot and not Dependabot ($author) — not auto-merging."
             exit 0
           fi
           gh pr merge --auto --squash "$PR_URL"
