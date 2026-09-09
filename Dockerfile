@@ -1,10 +1,17 @@
-# Self-owned Flutter + Android SDK CI image — built from scratch on plain
-# Ubuntu, no third-party Android/Flutter base image. Installs the Android
-# command-line tools directly from Google's official distribution, then
-# Flutter at the exact ref this image is built for (a version tag like
-# "3.47.2", or one of Flutter's 3 real channels: stable/beta/main —
-# https://docs.flutter.dev/release/upgrade. "dev" is not a real Flutter
+# Self-owned Flutter CI image — Android + Web + Linux desktop.
+#
+# Built from scratch on plain Ubuntu, no third-party Android/Flutter base
+# image. Installs the Android command-line tools directly from Google's
+# official distribution, Chromium for web, the Linux desktop toolchain,
+# then Flutter itself at the exact ref this image is built for (a version
+# tag like "3.47.2", or one of Flutter's 3 real channels: stable/beta/main
+# — https://docs.flutter.dev/release/upgrade. "dev" is not a real Flutter
 # channel — deprecated, don't build it).
+#
+# iOS, macOS, and Windows builds are NOT possible from this image, or any
+# Docker/Linux container — they require the real OS + toolchain (Xcode on
+# macOS, MSVC on Windows). That's an Apple/Microsoft platform requirement,
+# not something this image chooses to omit.
 #
 # FLUTTER_REF: a git tag (e.g. 3.47.2) or branch name (stable/beta/main).
 FROM ubuntu:24.04
@@ -19,8 +26,18 @@ RUN apt-get update \
         openjdk-21-jdk-headless \
         curl ca-certificates unzip xz-utils git \
         locales \
+        # Web: headless Chromium for `flutter test --platform chrome` /
+        # `flutter drive -d web-server` — https://docs.flutter.dev/testing/integration-tests.
+        chromium \
+        # Linux desktop: https://docs.flutter.dev/platform-integration/linux/building
+        clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
+
+# https://docs.flutter.dev/testing/integration-tests — Flutter looks for
+# this exact env var to drive headless Chrome; the apt package installs
+# the binary as `chromium`, not `google-chrome`.
+ENV CHROME_EXECUTABLE=/usr/bin/chromium
 
 # https://developer.android.com/studio#command-line-tools-only — pinned to
 # an exact build (15859902) rather than a "latest" URL, so this image is
@@ -55,18 +72,12 @@ ENV PATH="${FLUTTER_HOME}/bin:${FLUTTER_HOME}/bin/cache/dart-sdk/bin:${PATH}"
 
 RUN git clone --depth 1 --branch "${FLUTTER_REF}" https://github.com/flutter/flutter.git "${FLUTTER_HOME}" \
     && yes | flutter doctor --android-licenses \
-    && flutter doctor \
-    && flutter precache --android
-
-# Extension point for web builds (not installed yet — Android-only image
-# for now, per current scope): `flutter precache --web` needs no extra apt
-# packages, but `flutter test --platform chrome` would need a `chromium`
-# apt package installed above alongside the other apt-get install line.
-# Add both here together when web support is actually needed, rather than
-# growing this file piecemeal.
+    && flutter config --enable-linux-desktop \
+    && flutter doctor -v \
+    && flutter precache --android --linux --web
 
 # Bake in the exact ref this image was built for, so a build using it can
-# assert against it the same way bitbucket-pipelines.yml's own version
-# check does — a stale/wrong image is a build-time failure, not a silent
+# assert against it the same way a consuming pipeline's own version check
+# does — a stale/wrong image is a build-time failure, not a silent
 # wrong-SDK build.
 RUN echo "${FLUTTER_REF}" > /opt/flutter-ref.txt

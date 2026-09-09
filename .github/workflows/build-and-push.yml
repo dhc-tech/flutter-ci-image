@@ -42,8 +42,8 @@ jobs:
           build-args: |
             FLUTTER_REF=${{ steps.pinned.outputs.version }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/flutter-android-ci:${{ steps.pinned.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/flutter-android-ci:pinned
+            ghcr.io/${{ github.repository_owner }}/flutter-ci:${{ steps.pinned.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/flutter-ci:pinned
 
   build-channels:
     strategy:
@@ -68,5 +68,5 @@ jobs:
           build-args: |
             FLUTTER_REF=${{ matrix.channel }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/flutter-android-ci:${{ matrix.channel }}
-            ${{ matrix.channel == 'stable' && format('ghcr.io/{0}/flutter-android-ci:latest', github.repository_owner) || '' }}
+            ghcr.io/${{ github.repository_owner }}/flutter-ci:${{ matrix.channel }}
+            ${{ matrix.channel == 'stable' && format('ghcr.io/{0}/flutter-ci:latest', github.repository_owner) || '' }}

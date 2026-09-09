@@ -1,16 +1,20 @@
-# flutter-android-ci-image
+# flutter-ci-image
 
-A self-owned Flutter + Android SDK CI Docker image — built from scratch on
-plain `ubuntu:24.04`, no third-party Android/Flutter base image. Installs
-the Android command-line tools directly from Google's official
-distribution, then Flutter at an exact version or channel — no runtime
-`git clone`/version-pin workaround needed in your own CI pipeline.
+A self-owned Flutter CI Docker image — built from scratch on plain
+`ubuntu:24.04`, no third-party Android/Flutter base image. Installs the
+Android SDK command-line tools, Chromium, and the Linux desktop toolchain
+directly from their official sources, then Flutter at an exact version or
+channel — no runtime `git clone`/version-pin workaround needed in your own
+CI pipeline.
 
-Android only — Docker containers can't build iOS (needs real macOS + Xcode).
+Builds **Android, Web, and Linux desktop**. Does **not** and cannot build
+iOS, macOS, or Windows — those need the real OS + toolchain (Xcode,
+MSVC), which no Docker/Linux container can provide, on this image or any
+other.
 
 ## Tags
 
-Published to `ghcr.io/dhc-tech/flutter-android-ci`:
+Published to `ghcr.io/dhc-tech/flutter-ci`:
 
 | Tag | What it is | Rebuilt |
 |---|---|---|
@@ -35,11 +39,11 @@ ones the bot itself opened, never a human PR).
 ## Usage
 
 ```yaml
-image: ghcr.io/dhc-tech/flutter-android-ci:3.47.2
+image: ghcr.io/dhc-tech/flutter-ci:3.47.2
 ```
 
 or track a channel:
 
 ```yaml
-image: ghcr.io/dhc-tech/flutter-android-ci:stable
+image: ghcr.io/dhc-tech/flutter-ci:stable
 ```
