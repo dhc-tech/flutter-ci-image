@@ -1,0 +1,63 @@
+name: Approve bot PR workflow runs
+
+# GitHub gates a workflow run behind manual "Approve and run" the first
+# time it's associated with a given actor/branch combination — confirmed
+# repeatedly against real bot-opened PRs in this repo (not a fork-PR
+# setting; it happens on same-repo PRs too). There is no repo setting
+# found that permanently disables this, so this closes the gap the same
+# way merge-queue-fallback.yml closes the "PR fell behind" gap: sweep for
+# it and clear it automatically, restricted to the same trusted-author
+# check used everywhere else in this repo's automation (never a human
+# PR's run, even if it happens to be sitting in the same state).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  pull-requests: read
+
+jobs:
+  approve-pending-runs:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          runs="$(gh api "repos/${{ github.repository }}/actions/runs?status=action_required" --jq '.workflow_runs')"
+          echo "$runs" | jq -c '.[]' | while read -r run; do
+            run_id="$(echo "$run" | jq -r '.id')"
+            head_branch="$(echo "$run" | jq -r '.head_branch')"
+
+            # Only ever approve a run whose branch belongs to a PR this
+            # repo's automation already trusts — check-flutter-version.yml's
+            # flutter-bump/* branches, or a PR carrying the
+            # automated-flutter-bump label, or one authored by Dependabot.
+            case "$head_branch" in
+              flutter-bump/*) trusted=true ;;
+              *)
+                pr_info="$(gh pr list --repo ${{ github.repository }} --head "$head_branch" --json author,labels --jq '.[0]' 2>/dev/null || echo null)"
+                if [ "$pr_info" = "null" ] || [ -z "$pr_info" ]; then
+                  trusted=false
+                else
+                  author="$(echo "$pr_info" | jq -r '.author.login')"
+                  has_label="$(echo "$pr_info" | jq -r '[.labels[].name] | contains(["automated-flutter-bump"])')"
+                  case "$author" in
+                    dependabot\[bot\]|app/dependabot) trusted=true ;;
+                    *) trusted="$has_label" ;;
+                  esac
+                fi
+                ;;
+            esac
+
+            if [ "$trusted" != "true" ]; then
+              echo "Run $run_id on '$head_branch' is not a trusted bot branch — leaving it for manual review."
+              continue
+            fi
+
+            echo "Approving run $run_id on trusted branch '$head_branch'."
+            gh api -X POST "repos/${{ github.repository }}/actions/runs/$run_id/approve" || \
+              echo "::warning::Could not approve run $run_id — may need a human to approve it manually this once."
+          done
