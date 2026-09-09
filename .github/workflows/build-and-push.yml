@@ -33,7 +33,7 @@ jobs:
       - name: Read pinned Flutter version
         id: pinned
         run: echo "version=$(cat FLUTTER_VERSION)" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -85,7 +85,7 @@ jobs:
           fi
 
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
