@@ -112,7 +112,14 @@ jobs:
 
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN can read repo variables (gh variable get, above)
+          # but not write them — confirmed via a real run: `gh variable
+          # set` fails "HTTP 403: Resource not accessible by integration"
+          # even with actions:write in `permissions:`. GH_PAT_WORKFLOW
+          # (already provisioned for merge-queue-fallback.yml) works here
+          # too; falls back to GITHUB_TOKEN so a missing secret degrades
+          # to a clear failure rather than silently no-op-ing.
+          GH_TOKEN: ${{ secrets.GH_PAT_WORKFLOW || secrets.GITHUB_TOKEN }}
         run: |
           gh variable set LAST_BUILT_SHA_STABLE --repo ${{ github.repository }} --body "${{ steps.check.outputs.latest_sha }}"
 
@@ -169,7 +176,9 @@ jobs:
 
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # See the matching comment in build-stable above — GITHUB_TOKEN
+          # cannot write repo variables regardless of `permissions:`.
+          GH_TOKEN: ${{ secrets.GH_PAT_WORKFLOW || secrets.GITHUB_TOKEN }}
         run: |
           gh variable set "${{ steps.check.outputs.var_name }}" \
             --repo ${{ github.repository }} \
