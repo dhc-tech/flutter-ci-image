@@ -11,14 +11,17 @@ on:
   workflow_dispatch: {}
   schedule:
     # Every 5 minutes — GitHub Actions' own documented minimum schedule
-    # granularity (anything tighter, e.g. */1, is silently coalesced to
-    # 5 min by GitHub itself, not something a workflow can opt out of).
-    # NOT a fixed rebuild schedule — each run checks whether flutter/
-    # flutter's stable/beta/main branches actually moved since the last
-    # build (see build-channels below); if not, it's a no-op. This is the
-    # closest practical equivalent to instant reaction without GitHub
-    # Actions supporting real upstream webhooks for a repo we don't own.
+    # granularity — for `stable` only (see build-stable below). NOT a
+    # fixed rebuild schedule — each run checks whether flutter/flutter's
+    # branch actually moved since the last build; if not, it's a no-op.
+    # This is the closest practical equivalent to instant reaction
+    # without GitHub Actions supporting real upstream webhooks for a repo
+    # we don't own.
     - cron: "*/5 * * * *"
+    # `beta`/`main` aren't what this image's consumers build against day
+    # to day — checked once a day (see build-daily-channels below) rather
+    # than every 5 minutes.
+    - cron: "43 7 * * *"
 
 permissions:
   contents: read
@@ -46,17 +49,18 @@ jobs:
           push: true
           build-args: |
             FLUTTER_REF=${{ steps.pinned.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.pinned.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/flutter-ci:${{ steps.pinned.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/flutter-ci:pinned
 
-  build-channels:
-    strategy:
-      fail-fast: false
-      matrix:
-        # The 3 real Flutter release channels — "dev" was deprecated, not
-        # a current channel — https://docs.flutter.dev/release/upgrade.
-        channel: [stable, beta, main]
+  build-stable:
+    # On the 5-minute cron, only this job runs — build-daily-channels
+    # (below) sits this one out via its own matching condition, so a
+    # schedule-triggered run of this workflow never builds both crons'
+    # channels at once.
+    if: github.event.schedule != '43 7 * * *'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -68,6 +72,62 @@ jobs:
       # workflow's own GITHUB_TOKEN included), so every single tracking
       # commit silently failed until this fix. Variables need no push at
       # all.
+      - name: Check flutter/flutter's stable branch for new commits
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          latest_sha="$(gh api repos/flutter/flutter/commits/stable --jq '.sha')"
+          last_built_sha="$(gh variable get LAST_BUILT_SHA_STABLE --repo ${{ github.repository }} 2>/dev/null || echo none)"
+          echo "latest_sha=$latest_sha" >> "$GITHUB_OUTPUT"
+          if [ "$latest_sha" = "$last_built_sha" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "flutter/flutter@stable unchanged since last build ($latest_sha) — skipping."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "flutter/flutter@stable moved: ${last_built_sha} -> ${latest_sha}"
+          fi
+
+      - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
+        uses: docker/setup-buildx-action@v4
+      - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          build-args: |
+            FLUTTER_REF=stable
+          labels: |
+            org.opencontainers.image.version=stable@${{ steps.check.outputs.latest_sha }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/flutter-ci:stable
+            ghcr.io/${{ github.repository_owner }}/flutter-ci:latest
+
+      - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh variable set LAST_BUILT_SHA_STABLE --repo ${{ github.repository }} --body "${{ steps.check.outputs.latest_sha }}"
+
+  build-daily-channels:
+    # Only on the daily cron, a manual run, or a Dockerfile/FLUTTER_VERSION
+    # push — never on the 5-minute schedule (that's build-stable's).
+    if: github.event_name != 'schedule' || github.event.schedule == '43 7 * * *'
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [beta, main]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
       - name: Check flutter/flutter's ${{ matrix.channel }} branch for new commits
         id: check
         env:
@@ -102,12 +162,11 @@ jobs:
           push: true
           build-args: |
             FLUTTER_REF=${{ matrix.channel }}
+          labels: |
+            org.opencontainers.image.version=${{ matrix.channel }}@${{ steps.check.outputs.latest_sha }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/flutter-ci:${{ matrix.channel }}
-            ${{ matrix.channel == 'stable' && format('ghcr.io/{0}/flutter-ci:latest', github.repository_owner) || '' }}
 
-      # Record what we actually built so the next poll can compare against
-      # it — only on a real rebuild, never on a skipped no-op run.
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

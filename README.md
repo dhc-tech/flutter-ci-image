@@ -22,9 +22,9 @@ Published to `ghcr.io/dhc-tech/flutter-ci`:
 | Tag | What it is | Rebuilds |
 |---|---|---|
 | `<version>` (e.g. `3.47.2`) / `pinned` | Exact Flutter release, immutable | Automatically, the moment flutter/flutter's `stable` branch is tagged with a new version — see below |
-| `stable` / `latest` | Flutter's `stable` channel, tip-of-branch | Within ~15 min of a new commit landing on that branch |
-| `beta` | Flutter's `beta` channel, tip-of-branch | Within ~15 min of a new commit landing on that branch |
-| `main` | Flutter's `main` channel (contributor/bleeding-edge — this channel used to be called `master`) | Within ~15 min of a new commit landing on that branch |
+| `stable` / `latest` | Flutter's `stable` channel, tip-of-branch | Within ~5 min of a new commit landing on that branch (GitHub Actions' own minimum schedule granularity) |
+| `beta` | Flutter's `beta` channel, tip-of-branch | Once daily — not something this image's consumers build against as often as `stable` |
+| `main` | Flutter's `main` channel (contributor/bleeding-edge — this channel used to be called `master`) | Once daily, same reasoning as `beta` |
 
 `dev` is intentionally not built — Flutter deprecated it, it is not one of
 the 3 real channels (stable/beta/main) — see
@@ -36,17 +36,20 @@ Nothing in this repo hardcodes "the current Flutter version" as a
 judgment call — every tag traces back to flutter/flutter's own repository
 state, checked automatically and often:
 
-- **`stable`/`beta`/`main` tags** — `build-and-push.yml` runs every 15
-  minutes. Each run asks the GitHub API for the current HEAD commit SHA of
-  that channel's branch in `flutter/flutter`, compares it against the SHA
-  this image last actually built (a `LAST_BUILT_SHA_<CHANNEL>` GitHub
-  Actions repository variable — not a committed file, since branch
-  protection blocks a plain `git push` to `main` even from the workflow's
-  own token; variables need no push), and only rebuilds — and only
-  updates that recorded SHA — if the branch has genuinely moved. An
-  unchanged channel is a fast no-op, not a wasted rebuild.
-- **`<version>`/`pinned` tag** — `check-flutter-version.yml` also runs
-  every 15 minutes. It asks the GitHub API which commit `flutter/flutter`'s
+- **`stable` tag** — `build-and-push.yml`'s `build-stable` job runs every
+  5 minutes (GitHub Actions' own minimum schedule granularity). Each run
+  asks the GitHub API for the current HEAD commit SHA of `flutter/
+  flutter`'s `stable` branch, compares it against the SHA this image last
+  actually built (a `LAST_BUILT_SHA_STABLE` GitHub Actions repository
+  variable — not a committed file, since branch protection blocks a
+  plain `git push` to `main` even from the workflow's own token;
+  variables need no push), and only rebuilds — and only updates that
+  recorded SHA — if the branch has genuinely moved. An unchanged branch
+  is a fast no-op, not a wasted rebuild.
+- **`beta`/`main` tags** — `build-daily-channels` job, same
+  changed-SHA check, but on a once-daily cron instead of every 5 minutes.
+- **`<version>`/`pinned` tag** — `check-flutter-version.yml` runs every
+  5 minutes. It asks the GitHub API which commit `flutter/flutter`'s
   `stable` branch currently points at, then which tag (if any) points at
   that exact same commit — that tag name *is* the real, official version
   number Flutter itself assigned to that release, straight from
@@ -112,10 +115,28 @@ Already configured on this repo — noted here in case it's ever recreated:
 image: ghcr.io/dhc-tech/flutter-ci:3.47.2
 ```
 
-or track a channel (rebuilds within ~15 min of upstream moving, see above):
+or track a channel (rebuilds within ~5 min of `stable`/`beta` moving,
+~daily for `main` — see above):
 
 ```yaml
 image: ghcr.io/dhc-tech/flutter-ci:stable
+```
+
+### Checking exactly what Flutter version a tag contains
+
+Every image — including the mutable `stable`/`beta`/`main` tags, which
+don't carry a version in their own name — carries an
+`org.opencontainers.image.version` label recording the exact commit it
+was built from, so you never have to guess:
+
+```bash
+docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' ghcr.io/dhc-tech/flutter-ci:stable
+```
+
+or without pulling the image, via the GHCR API:
+
+```bash
+docker manifest inspect ghcr.io/dhc-tech/flutter-ci:stable
 ```
 
 ## Repo layout
