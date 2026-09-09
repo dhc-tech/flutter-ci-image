@@ -5,9 +5,9 @@ on:
     # Every 15 minutes — a new stable release is really just flutter/
     # flutter's `stable` branch moving to a new tagged commit, so this
     # polls often and only acts when that actually happened (idempotent
-    # branch-exists check below), which is as close to "the moment
-    # Flutter tags a release" as a repo we don't own can get without a
-    # webhook.
+    # against an already-open bump PR, below), which is as close to "the
+    # moment Flutter tags a release" as a repo we don't own can get
+    # without a webhook.
     - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
@@ -60,11 +60,20 @@ jobs:
           OLD_VERSION: ${{ steps.compare.outputs.current }}
         run: |
           branch="flutter-bump/${NEW_VERSION}"
-          # Idempotent: if this bump's branch/PR already exists (e.g. a
-          # previous run today), don't open a duplicate.
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "Branch $branch already exists — skipping."
+          # Idempotent against a genuinely open bump PR — NOT against the
+          # branch merely existing. A merged/closed PR's branch (normally
+          # auto-deleted, but not guaranteed — e.g. delete-on-merge was
+          # off when an earlier PR merged in this repo's own history) must
+          # never block re-bumping to the same version number later, which
+          # a plain "does the branch ref exist" check did in practice.
+          open_pr="$(gh pr list --state open --head "$branch" --json number --jq '.[0].number')"
+          if [ -n "$open_pr" ]; then
+            echo "PR #$open_pr already open for $branch — skipping."
             exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Stale branch $branch exists with no open PR — deleting it before recreating."
+            git push origin --delete "$branch"
           fi
           git config user.name "flutter-version-bot"
           git config user.email "actions@github.com"
