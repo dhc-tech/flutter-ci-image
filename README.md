@@ -1,8 +1,8 @@
 # flutter-ci-image
 
 A self-owned Flutter CI Docker image — built from scratch on plain
-`ubuntu:24.04`, no third-party Android/Flutter base image. Installs the
-Android SDK command-line tools, Chromium, and the Linux desktop toolchain
+Ubuntu, no third-party Android/Flutter base image. Installs the Android
+SDK command-line tools, Google Chrome, and the Linux desktop toolchain
 directly from their official sources, then Flutter itself. Every version
 this image ever ships is resolved **dynamically from
 [github.com/flutter/flutter](https://github.com/flutter/flutter)
@@ -22,9 +22,9 @@ registry credentials):
 
 | Tag | What it is | Pick this if you want... | Rebuilds |
 |---|---|---|---|
-| `stable` / `latest` | Flutter's official **stable** channel — the tip of flutter/flutter's `stable` branch. Recommended by Flutter itself for new users and production releases; updated from `beta` roughly every 3 months, with occasional hot fixes for high-severity issues | The version most people should build against day to day | Within ~5 min of a new commit landing on that branch (GitHub Actions' own minimum schedule granularity) |
-| `beta` | Flutter's **beta** channel — the tip of flutter/flutter's `beta` branch. Per Flutter's own docs, "essentially the same as the stable channel but updated monthly instead of quarterly" — when `stable` updates, it updates *to* the latest `beta`, so this is genuinely a preview of what `stable` becomes next, not a separate experimental line | Slightly newer fixes/features than `stable`, heavily tested but not yet promoted | Once daily |
-| `main` | Flutter's **main** channel (used to be called `master`) — the tip of flutter/flutter's `main` branch, where Flutter's own contributors work. Flutter's own docs explicitly recommend against using it: "not as thoroughly tested... more likely to contain serious regressions" | Testing against the absolute latest, unreleased Flutter source | Once daily |
+| `stable` | Flutter's official **stable** channel — the tip of flutter/flutter's `stable` branch. Recommended by Flutter itself for new users and production releases; updated from `beta` roughly every 3 months, with occasional hot fixes for high-severity issues | The version most people should build against day to day | Within ~5 min of a new commit landing on that branch (GitHub Actions' own minimum schedule granularity) |
+| `beta` | Flutter's **beta** channel — the tip of flutter/flutter's `beta` branch. Per Flutter's own docs, "essentially the same as the stable channel but updated monthly instead of quarterly" — when `stable` updates, it updates *to* the beta channel's current state, so this is genuinely a preview of what `stable` becomes next, not a separate experimental line | Slightly newer fixes/features than `stable`, heavily tested but not yet promoted | Once daily |
+| `main` | Flutter's **main** channel (used to be called `master`) — the tip of flutter/flutter's `main` branch, where Flutter's own contributors work. Flutter's own docs explicitly recommend against using it: "not as thoroughly tested... more likely to contain serious regressions" | Testing against unreleased Flutter source, ahead of `beta` | Once daily |
 | `<version>` (e.g. `3.47.2`) / `pinned` | The exact version number of the current stable release, immutable — never silently changes under you | Reproducible builds: the same tag always means the same Flutter build, unlike `stable` which moves forward over time | Automatically, the moment flutter/flutter's `stable` branch is tagged with a new version — see below |
 
 In short: `stable` tracks whatever Flutter currently calls its stable
@@ -34,6 +34,11 @@ will become next (~monthly); `main` is Flutter's own bleeding-edge
 contributor branch, explicitly not recommended by Flutter for general use.
 See [docs.flutter.dev/release/upgrade](https://docs.flutter.dev/release/upgrade)
 for Flutter's own explanation of these channels.
+
+There is no `latest` tag — `stable` already means exactly that (Flutter's
+own current stable release), so a separate `latest` alias would only
+duplicate `stable` under a second name and invite confusion about which
+one to use.
 
 `dev` is intentionally not built — Flutter deprecated it, it is not one of
 the 3 real channels (stable/beta/main) — see
@@ -139,7 +144,7 @@ Never changes. Use this if you need every build to use the *exact* same
 Flutter SDK build over build, and are fine manually bumping the tag
 yourself when you deliberately want to move to a newer Flutter version.
 `pinned` (no version number) always points at the same commit as the
-latest `<version>` tag, if you'd rather not track the number at all.
+current `<version>` tag, if you'd rather not track the number at all.
 
 **Want to try Flutter's upcoming release before it reaches stable:**
 ```yaml
