@@ -17,14 +17,20 @@ anywhere can do it.
 
 ## Tags
 
-Published to `ghcr.io/dhc-tech/flutter-ci`:
+Published to `ghcr.io/dhc-tech/flutter-ci` (public — pull it with no
+registry credentials):
 
-| Tag | What it is | Rebuilds |
-|---|---|---|
-| `<version>` (e.g. `3.47.2`) / `pinned` | Exact Flutter release, immutable | Automatically, the moment flutter/flutter's `stable` branch is tagged with a new version — see below |
-| `stable` / `latest` | Flutter's `stable` channel, tip-of-branch | Within ~5 min of a new commit landing on that branch (GitHub Actions' own minimum schedule granularity) |
-| `beta` | Flutter's `beta` channel, tip-of-branch | Once daily — not something this image's consumers build against as often as `stable` |
-| `main` | Flutter's `main` channel (contributor/bleeding-edge — this channel used to be called `master`) | Once daily, same reasoning as `beta` |
+| Tag | What it is | Pick this if you want... | Rebuilds |
+|---|---|---|---|
+| `stable` / `latest` | Whatever Flutter itself currently calls its official **stable release** — the tip of flutter/flutter's `stable` branch | The version most people should build against day to day: Flutter's own recommended, production-ready release | Within ~5 min of a new commit landing on that branch (GitHub Actions' own minimum schedule granularity) |
+| `beta` | The tip of flutter/flutter's `beta` branch — whatever's currently staged as the **next** release, one step ahead of stable | Early access to upcoming Flutter features/fixes before they reach stable, accepting some risk | Once daily |
+| `main` | The tip of flutter/flutter's `main` branch — literally the newest, bleeding-edge, unreleased code in the Flutter SDK repo (this channel used to be called `master`) | The absolute latest Flutter source, ahead of even `beta`, for testing against upstream Flutter changes as they land | Once daily |
+| `<version>` (e.g. `3.47.2`) / `pinned` | The exact version number of the current stable release, immutable — never silently changes under you | Reproducible builds: the same tag always means the same Flutter build, unlike `stable` which moves | Automatically, the moment flutter/flutter's `stable` branch is tagged with a new version — see below |
+
+In short: `stable` tracks whatever Flutter calls stable right now (moves
+over time); `<version>`/`pinned` freezes that same release at one exact
+number (never moves); `beta` and `main` are progressively newer/riskier
+than `stable`, in that order.
 
 `dev` is intentionally not built — Flutter deprecated it, it is not one of
 the 3 real channels (stable/beta/main) — see
