@@ -1,4 +1,4 @@
-# flutter-ci-image
+# docker-images-flutter
 
 A self-owned Flutter CI Docker image — built from scratch on plain
 Ubuntu, no third-party Android/Flutter base image. Installs the Android
@@ -17,7 +17,7 @@ anywhere can do it.
 
 ## Tags
 
-Published to `ghcr.io/dhc-tech/flutter-ci` (public — pull it with no
+Published to `ghcr.io/dhc-tech/flutter` (public — pull it with no
 registry credentials):
 
 | Tag | What it is | Pick this if you want... | Rebuilds |
@@ -130,7 +130,7 @@ above, spelled out as copy-pasteable `image:` lines:
 
 **Most people, most of the time — track official Flutter stable:**
 ```yaml
-image: ghcr.io/dhc-tech/flutter-ci:stable
+image: ghcr.io/dhc-tech/flutter:stable
 ```
 Always builds against whatever Flutter itself currently calls its stable
 release. Moves forward automatically (~quarterly, within ~5 min of it
@@ -138,7 +138,7 @@ actually changing) — you never touch this line again.
 
 **Reproducible builds — freeze one exact Flutter version forever:**
 ```yaml
-image: ghcr.io/dhc-tech/flutter-ci:3.47.2
+image: ghcr.io/dhc-tech/flutter:3.47.2
 ```
 Never changes. Use this if you need every build to use the *exact* same
 Flutter SDK build over build, and are fine manually bumping the tag
@@ -148,14 +148,14 @@ current `<version>` tag, if you'd rather not track the number at all.
 
 **Want to try Flutter's upcoming release before it reaches stable:**
 ```yaml
-image: ghcr.io/dhc-tech/flutter-ci:beta
+image: ghcr.io/dhc-tech/flutter:beta
 ```
 This is what `stable` becomes next (~monthly cadence) — heavily tested by
 the Flutter team already, just not yet promoted. Rebuilds daily.
 
 **Testing against Flutter's own bleeding-edge, unreleased source:**
 ```yaml
-image: ghcr.io/dhc-tech/flutter-ci:main
+image: ghcr.io/dhc-tech/flutter:main
 ```
 Flutter's own contributor branch. Flutter's docs explicitly say not to
 use this for anything but testing against upstream changes as they land
@@ -169,13 +169,13 @@ don't carry a version in their own name — carries an
 was built from, so you never have to guess:
 
 ```bash
-docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' ghcr.io/dhc-tech/flutter-ci:stable
+docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' ghcr.io/dhc-tech/flutter:stable
 ```
 
 or without pulling the image, via the GHCR API:
 
 ```bash
-docker manifest inspect ghcr.io/dhc-tech/flutter-ci:stable
+docker manifest inspect ghcr.io/dhc-tech/flutter:stable
 ```
 
 ## Repo layout

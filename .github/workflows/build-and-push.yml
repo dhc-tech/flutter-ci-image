@@ -52,8 +52,8 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ steps.pinned.outputs.version }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/flutter-ci:${{ steps.pinned.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/flutter-ci:pinned
+            ghcr.io/${{ github.repository_owner }}/flutter:${{ steps.pinned.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/flutter:pinned
 
   build-stable:
     # On the 5-minute cron, only this job runs — build-daily-channels
@@ -107,7 +107,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=stable@${{ steps.check.outputs.latest_sha }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/flutter-ci:stable
+            ghcr.io/${{ github.repository_owner }}/flutter:stable
 
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
         env:
@@ -171,7 +171,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ matrix.channel }}@${{ steps.check.outputs.latest_sha }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/flutter-ci:${{ matrix.channel }}
+            ghcr.io/${{ github.repository_owner }}/flutter:${{ matrix.channel }}
 
       - if: steps.check.outputs.changed == 'true' || github.event_name != 'schedule'
         env:
