@@ -87,6 +87,32 @@ RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
 RUN yes | sdkmanager --licenses \
     && sdkmanager "platform-tools"
 
+# cmake for native/NDK builds — not covered by Gradle's own auto-download,
+# and Flutter has no official pinned constant for it (unlike compileSdk/
+# ndkVersion below), so this is a plain static version.
+#
+# compileSdk platforms and build-tools are intentionally NOT pinned here —
+# build-tools has no Flutter-official version to track (AGP resolves it
+# automatically from compileSdk, https://developer.android.com/studio/intro/update#download-with-gradle),
+# and compileSdk itself is installed dynamically below, after Flutter is
+# cloned, from flutter.compileSdkVersion — same reasoning as ndkVersion.
+RUN yes | sdkmanager --licenses \
+    && sdkmanager "cmake;3.22.1" \
+    # sdkmanager leaves downloaded zips/temp files under the SDK root that
+    # aren't needed once a package is unpacked — remove them to keep this
+    # layer from carrying dead weight into the final image.
+    && rm -rf "${ANDROID_HOME}/.temp" /root/.android/cache
+
+# Firebase CLI (standalone Linux binary), pinned to an exact released
+# version rather than /bin/linux/latest — reproducible: a rebuild of this
+# same Dockerfile always gets the same CLI, instead of silently picking up
+# whatever firebase-tools shipped that day.
+# https://github.com/firebase/firebase-tools/releases
+ENV FIREBASE_CLI_VERSION=15.30.0
+RUN curl -fsSL "https://firebase.tools/bin/linux/v${FIREBASE_CLI_VERSION}" -o /usr/local/bin/firebase \
+    && chmod +x /usr/local/bin/firebase \
+    && firebase --version
+
 ARG FLUTTER_REF=stable
 ENV FLUTTER_HOME=/opt/flutter
 ENV PATH="${FLUTTER_HOME}/bin:${FLUTTER_HOME}/bin/cache/dart-sdk/bin:${PATH}"
@@ -96,6 +122,24 @@ RUN git clone --depth 1 --branch "${FLUTTER_REF}" https://github.com/flutter/flu
     && flutter config --enable-linux-desktop \
     && flutter doctor -v \
     && flutter precache --android --linux --web
+
+# compileSdk platform + NDK are both installed dynamically here, read
+# straight out of the just-cloned Flutter SDK's own official constants
+# (packages/flutter_tools/lib/src/android/gradle_utils.dart) instead of
+# hardcoded version numbers — the exact same values android/app/
+# build.gradle.kts resolves to via `compileSdk = flutter.compileSdkVersion`
+# and `ndkVersion = flutter.ndkVersion`. Bumping FLUTTER_REF to a release
+# with different defaults automatically installs the matching platform/NDK
+# here too — no separate Dockerfile bump needed when Flutter's own pins
+# change.
+RUN GRADLE_UTILS="${FLUTTER_HOME}/packages/flutter_tools/lib/src/android/gradle_utils.dart" \
+    && COMPILE_SDK=$(grep -oE "compileSdkVersionInt = [0-9]+" "${GRADLE_UTILS}" | grep -oE "[0-9]+") \
+    && NDK_VERSION=$(grep -oE "ndkVersion = '[0-9.]+'" "${GRADLE_UTILS}" | grep -oE "[0-9.]+") \
+    && test -n "${COMPILE_SDK}" && test -n "${NDK_VERSION}" \
+    && echo "Installing Flutter's official compileSdk: android-${COMPILE_SDK}, NDK: ${NDK_VERSION}" \
+    && sdkmanager "platforms;android-${COMPILE_SDK}" "ndk;${NDK_VERSION}" \
+    && echo "${COMPILE_SDK}" > /opt/flutter-compilesdk-version.txt \
+    && echo "${NDK_VERSION}" > /opt/flutter-ndk-version.txt
 
 # Bake in the exact ref this image was built for, so a build using it can
 # assert against it the same way a consuming pipeline's own version check
